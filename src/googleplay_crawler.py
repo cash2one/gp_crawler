@@ -1,0 +1,793 @@
+#!/usr/bin/env python
+#-*- coding: utf-8 -*-
+########################################################################
+# 
+# Copyright (c) 2015 Baidu.com, Inc. All Rights Reserved
+# 
+########################################################################
+ 
+"""
+File: googleplay_crawler.py
+Author: Rui Li(lirui05@baidu.com)
+Date: 2015/07/23 19:06:29
+"""
+import os
+import re
+import copy
+import urllib
+import random
+import commands
+import traceback
+
+from proto import app_pb2 as _app_message
+from proto import image_pb2 as _image_message
+from proto import scan_pb2 as _scan_message
+
+from lib import const
+from lib import error
+from lib import utils
+from src import log
+from src import crawler
+from src import metadata
+
+class GoogleplayCrawler(crawler.Crawler):
+    """ 从googleplay抓取app
+        Attributes:
+            gp_category_list: 所有googleplay分类
+            gp_2_mm_category_list: 从googleplay到mm分类映射关系
+    """
+    def __init__(self, conf_file=None):
+        super(GoogleplayCrawler, self).__init__(conf_file)
+        self.logs = []
+        self.apks_mail = []
+        self.mail_receivers = []
+        self.mail_sender = ""
+
+        self.gp_category_list = {}
+        self.gp_2_mm_category_list = {}
+
+        self.apk_source = 'googleplay'
+
+    def init(self):
+        """ 初始化. 加载配置以及数据文件
+        """
+        super(GoogleplayCrawler, self).init()
+        self.server_url_dict.update({
+            'pre_scan': self.conf_parse.get('googleplay', 'pre_scan_url'),
+            'multi_version_scan': self.conf_parse.get('googleplay', 'multi_version_scan_url'),
+            'detail': self.conf_parse.get('googleplay', 'detail_url'),
+            'content_rating': self.conf_parse.get('googleplay', 'content_rating_url'),
+            'paid_info': self.conf_parse.get('googleplay', 'paid_info_url'),
+            'googleplay_detail': self.conf_parse.get('googleplay', 'googleplay_detail_url')})
+
+        with open(const.GP_CATEGORY, 'r') as fd:
+            for line in fd.readlines():
+                cate_id, cate_name = line.strip('\n').split('\t')[:2]
+                self.gp_category_list.update({cate_name.strip(' '): int(cate_id.strip(' '))})
+        with open(const.GP_2_MM_CATEGORY, 'r') as fd:
+            for line in fd.readlines():
+                cate_id, cate_name, gp_cate_list = line.strip('\n').split('\t')[:3]
+                gp_cate_list = gp_cate_list.split('|')
+                for gp_cate in  gp_cate_list:
+                    self.gp_2_mm_category_list.update({gp_cate.strip(' '): int(cate_id.strip(' '))})
+        with open(const.APKS_MAIL, 'r') as fd:
+            for line in fd.readlines():
+                apk_name = line.strip('\n')
+                self.apks_mail.append(apk_name)
+        self.mail_receivers.extend(self.conf_parse.get('mail', 'receivers').strip('\n').split(';'))
+        self.mail_sender = self.conf_parse.get('mail', 'sender').strip('\n')
+
+    def _get_gp_category_by_name(self, cate_name):
+        try:
+            return self.gp_category_list[cate_name]
+        except KeyError:
+            print self.gp_category_list
+            raise error.UnknownCategory('googleplay cate_name: %s' % (cate_name))
+
+    def _get_mm_category_by_gp_name(self, gp_cate_name):
+        try:
+            return self.gp_2_mm_category_list[gp_cate_name]
+        except KeyError:
+            raise error.UnknownCategory('2 mm, googlepaly cate_name: %s' % (gp_cate_name))
+
+    def new_session(self):
+        """ 对于多版本app, 会下载多个apk文件, 以session记录单次apk下载
+        """ 
+        self.log.total_cost_time = int(utils.cur_time_secs() - self.log.begin_time)
+        self.log.ret_code = const.RetCode.OK
+        self.logs.append(copy.deepcopy(self.log))
+        new_log = log.Log()
+        new_log.package = self.log.package
+        new_log.packageid = self.log.packageid
+        new_log.task_name = self.log.task_name
+        new_log.task_type = self.log.task_type
+        new_log.is_channel = self.log.is_channel
+        new_log.force_update = self.log.force_update
+        new_log.multiapk = self.log.multiapk
+        new_log.title = self.log.title
+        new_log.old_version_code = self.log.old_version_code
+        new_log.old_version_name = self.log.old_version_name
+        new_log.action = self.log.action
+        new_log.job_id = self.log.job_id
+        self.log = new_log
+
+    def print_log(self):
+        """ 打印日志
+        """
+        self.log.total_cost_time = int(utils.cur_time_secs() - self.log.begin_time)
+        self.logs.append(self.log)
+        for log in self.logs:
+            log.apk_source = self.apk_source
+            log.print_2_file()
+
+    def do(self):
+        """ 主入口
+        """
+        try:
+            self.validate_request()
+            self.load_data_from_db()
+            self.pre_process()
+            self.check_update()
+            self.crawler()
+            self.update_db()
+            self.clear_cache()
+            self.notice()
+        except error.ParamError as err:
+            utils.log('param error. [%s]' % (err), level='FATAL')
+            self.log.ret_code = const.RetCode.REQUEST_ERROR
+        except error.ImpossibleError as err:
+            utils.log('impossible error. [%s]' % (err), level='FATAL')
+        except error.ChannelApp:
+            utils.log('channel app. [%s]' % (self.session.package))
+            self.log.is_channel = 1
+            self.log.ret_code = const.RetCode.OK
+        except error.MultiVersionScanError as err:
+            utils.log('failed to multi version scan. err=[%s]' % (err), level='FATAL')
+            self.log.ret_code = const.RetCode.MULTI_VERSION_SCAN_ERRRO
+        except error.PreScanError as err:
+            utils.log('failed to pre scan. err=[%s]' % (err), level='FATAL')
+            self.log.ret_code = const.RetCode.PRE_SCAN_ERROR
+        except error.NoCompatibleAccount:
+            utils.log('no compatible code. package=[%s]' % (self.session.package), level='FATAL')
+            self.log.ret_code = const.RetCode.NO_COMPATIBLE_ACCOUNT
+        except error.ItemNotFound:
+            utils.log('not found in gp. package=[%s]' % (self.session.package), level='FATAL')
+            self.log.ret_code = const.RetCode.ITEM_NOT_FOUND
+        except error.UnknownCategory as err:
+            utils.log('unknown category. [%s]' % (err), level='FATAL')
+            self.log.ret_code = const.RetCode.RESOURCE_LOST_ERROR
+        except error.GetMultiContentRatingError as err:
+            utils.log('failed to get multi content rating. err=[%s]' % (err), level='FATAL')
+            self.log.ret_code = const.RetCode.GET_MULTI_CONTENT_RATING_ERROR
+        except error.GetPaidInfoError as err:
+            utils.log('failed to get paid info. err=[%s]' % (err), level='FATAL')
+            self.log.ret_code = const.RetCode.GET_PAID_INFO_ERROR
+        except error.GetDetailError as err:
+            utils.log('failed to get app detail. err=[%s]' % (err), level='FATAL')
+            self.log.ret_code = const.RetCode.GET_DETAIL_ERROR
+        except error.ProcessImageError as err:
+            utils.log('failed to process image. err=[%s]' % (err), level='FATAL')
+            self.log.ret_code =const.RetCode.PROCESS_IMAGE_ERROR
+        except error.DownloadApkError as err:
+            utils.log('failed to download apk. [%s]' % (err), level='FATAL')
+            self.log.ret_code = const.RetCode.DOWNLOAD_APK_ERROR
+        except error.ParseApkError as err:
+            utils.log('failed to parse apk. [%s]' % (err), level='FATAL')
+            self.log.ret_code = const.RetCode.PARSE_APK_ERROR
+        except error.UploadFileError as err:
+            utils.log('failed to upload apk. [%s]' % (err), level='FATAL')
+            self.log.ret_code = const.RetCode.UPLOAD_STORAGE_ERROR
+        except error.DbError as err:
+            utils.log('db error. [%s]' % (err), level='FATAL') 
+            self.log.ret_code = const.RetCode.DB_ERROR
+        except error.VersionError as err:
+            utils.log('version is 0.[%s]' % (err), level='FATAL')
+            self.log.ret_code = const.RetCode.VERSION_CODE_EQ_ZERO_ERROR
+        except Exception as err:
+            utils.log('unknown error. [%s, %s]' % (err, traceback.print_exc()), level='FATAL')
+            self.log.ret_code = const.RetCode.UNKNOWN_ERROR
+        else:
+            self.log.ret_code = const.RetCode.OK
+        finally:
+            self.print_log()
+            return self.log.ret_code.value
+
+    def pre_process(self):
+        """ 根据任务类型预处理, '下载'或者'详情'
+            1.假设任务类型为'下载'
+                对于多版本, 直接多版本扫描; 否则先基本扫描
+            2.假设任务类型为'详情', 直接基本扫描
+            涉及到两点更改请求:
+            1.'下载'类型, 但是没有可下载账号, 转为'详情'
+            2.付费app, 转为'详情'
+            Raises:
+                error.ItemNotFound: app在gp不存在
+                error.PreScanError: 扫描失败
+                error.NoCompatibleAccount: 没有适配可获取信息的账号
+        """
+        utils.log('pre process...')
+        self.session.detect_time = utils.time_stamp()
+
+        if self.session.is_channel:
+            self.session.task_type = const.TaskType.DETAIL
+
+        if self.session.task_type == const.TaskType.DOWNLOAD and \
+            not self.session.multiapk == const.MultiApkType.NO_MULTIAPK:
+            self.multi_version_scan()
+            return
+
+        url = self.server_url_dict.get('pre_scan')
+        scan_req = _scan_message.AdaptRequest(package=self.session.package,
+            type=self.session.task_type)
+        utils.log('url: %s, scan_req: %s' % (url, utils.message_2_dict(scan_req)))
+        try:
+            res = utils.requests_ex(url, data=scan_req.SerializeToString())
+        except Exception as err:
+            raise error.PreScanError(url, msg=err, extra='request exception')
+        else:
+            status_code, content = res.status_code, res.content
+            if status_code == const.HttpStatusCode.OK: # 预扫描成功
+                adapt_res = _scan_message.AdaptResponse()
+                try:
+                    adapt_res.MergeFromString(content)
+                    self.session.pre_scan_res = metadata.CompatibleDetail(adapt_res.detail)
+                except Exception as err:
+                    raise error.PreScanError(url=url, msg=err, extra='deserialize failed')
+                else:
+                    # 多版本信息以db为准
+                    # 但是当db multiapk=0或者新增app, 但是gp返回因版本而异, 多版本先置为2
+                    if self.session.task_type == const.TaskType.DOWNLOAD and \
+                        self.session.multiapk == const.MultiApkType.NO_MULTIAPK and \
+                        self.session.pre_scan_res.varies_by_account == 1:
+                        self.log.multiapk = self.session.multiapk = const.MultiApkType.FOR_CRALWER
+                        utils.log('find multi version. multiapk: %d' % (self.session.multiapk))
+                        self.multi_version_scan()
+                    # 如果是付费app, 转为只获取详情
+                    free = (max(map(lambda x: x.micros, self.session.pre_scan_res.offer)) == 0)
+                    if not free:
+                        old_task_type = self.session.task_type
+                        self.session.task_type = const.TaskType.DETAIL
+                        self.log.free = self.session.free = free
+                        utils.log('paid app, convert task_type from %d to %d' % (
+                            old_task_type, self.session.task_type))
+                    # 纪录日志
+                    account = self.session.pre_scan_res.account
+                    self.log.account, self.log.android_id, self.log.password = \
+                        account.email, account.androidId, account.password 
+                    self.log.proxies = self.session.pre_scan_res.proxies
+            elif status_code == const.HttpStatusCode.NOT_FOUND: # app在gp不存在
+                if self.session.exist_in_db:
+                    self.session.db_set.package.source_online = 0
+                    self.session.db_set.upsert_package_ext_table()
+                raise error.ItemNotFound
+            elif status_code == const.HttpStatusCode.BAD_REQUEST: # 预扫描请求错误
+                raise error.PreScanError(url=url, msg=content, extra='bad request')
+            elif status_code == const.HttpStatusCode.INTERNAL_ERROR: # 服务响应有问题
+                raise error.PreScanError(url=url, msg=content, extra='internal error')
+            elif status_code == const.HttpStatusCode.NOT_IMPLEMENTED:
+                # 假设抓取类型为下载apk, 找不到可用账号, 转为只获取详情
+                if self.session.task_type == const.TaskType.DOWNLOAD:
+                    # 对于存在于db且state=0或1的app, 转为只获取详情, 但是禁止更新doc
+                    if self.session.exist_in_db and (not self.session.src_state == 2):
+                        self.session.fix_action = const.Action.UPDATE_DETAIL
+                    utils.log('no compatible account. make task_type from %d to %d' % (
+                        const.TaskType.DOWNLOAD, const.TaskType.DETAIL))
+                    self.session.task_type = const.TaskType.DETAIL
+                    self.pre_process()
+                else:
+                    # 假设只为获取详情但是依然没有可用账号, 抛异常
+                    raise error.NoCompatibleAccount
+            else:
+                raise error.PreScanError(url=url, msg=content, extra='unknown status code=%d' \
+                    % (status_code)) 
+            utils.log('[pre scan]: %s' % (self.session.pre_scan_res))
+
+    def multi_version_scan(self):
+        """ 多版本预扫描
+        """
+        utils.log('multi version scan...')
+        url = self.server_url_dict.get('multi_version_scan')
+        scan_req = _scan_message.MultiVersionRequest(package=self.session.package)
+        utils.log('url: %s, scan_req: %s' % (url, utils.message_2_dict(scan_req)))
+        try:
+            res = utils.requests_ex(url, data=scan_req.SerializeToString())
+        except Exception as err:
+            raise error.MultiVersionScanError(url=url, msg=err, extra='request exception')
+        else:
+            status_code, content = res.status_code, res.content
+            if status_code == const.HttpStatusCode.OK:
+                multi_version_res = _scan_message.MultiVersionResponse()
+                try:
+                    multi_version_res.MergeFromString(content)
+                except:
+                    raise error.MultiVersionScanError(url=url, msg=err, extra='deserialize error')
+                else:
+                    self.session.multi_version_scan_res = \
+                        map(lambda x: metadata.CompatibleDetail(x), multi_version_res.details)
+            elif status_code == const.HttpStatusCode.NOT_FOUND:
+                raise error.ItemNotFound
+            elif status_code == const.HttpStatusCode.BAD_REQUEST:
+                raise error.MultiVersionScanError(url=url, msg=content, extra='bad request')
+            elif status_code == const.HttpStatusCode.INTERNAL_ERROR:
+                raise error.MultiVersionScanError(url=url, msg=content, extra='internal error')
+            elif status_code == const.HttpStatusCode.NOT_IMPLEMENTED:
+                # 假设抓取类型为下载apk, 找不到可用账号, 转为只获取详情
+                if self.session.task_type == const.TaskType.DOWNLOAD:
+                    # 对于存在于db且state=0或1的app, 转为只获取详情, 但是禁止更新doc
+                    if self.session.exist_in_db and (not self.session.src_state == 2):
+                        self.session.fix_action = const.Action.UPDATE_DETAIL
+                    utils.log('no compatible account. make task_type from %d to %d' % (
+                        const.TaskType.DOWNLOAD, const.TaskType.DETAIL))
+                    self.session.task_type = const.TaskType.DETAIL
+                    self.pre_process()
+            else:
+                raise error.MultiVersionScanError(url=url, msg=content, \
+                    extra='unknown status code=%d' % (status_code))
+        utils.log('[multi version scan]: %s' % (
+            map(lambda x: x.version, self.session.multi_version_scan_res)))
+
+    def check_update(self):
+        """ 检查更有四种情况:
+            1.渠道包一律只更新详情字段, 主要是同步频繁动态数据, 比如评分、分级、价格等
+            2.非渠道包, 同上, 一律都要更新详情字段
+            3.对于在db中不存在, 置为INSERT
+            4.对于在db中存在, 且'下载'类型任务, 请求里force_update=1, 则无条件更新所有信息;
+              force_update=0, 对比版本号以及版本名称确认是否更新
+            更新包括三类, package, doc, apk_version_info
+        """
+        titles_set = set()
+        utils.log('check update...')
+        if self.session.is_channel:
+            self.session.fix_action = const.Action.UPDATE_DETAIL
+        self.session.action = const.Action.UPDATE_DETAIL
+        # 固定类型. 主要限制不更新doc只更新详情的情况
+        # 对比版号决定是否下载apk
+        # 非多版本直接对比预扫描结果版本号以及版本名称
+        # 多版本除此之外, 还需要对比多版本信息列表
+
+        if not self.session.fix_action == const.Action.DEFAULT:
+            self.session.action = self.session.fix_action
+            utils.log('fix action: %s' % (self.session.action))
+            return 
+
+        if self.session.multiapk == const.MultiApkType.NO_MULTIAPK:
+            self.log.new_version_code = version_code = self.session.pre_scan_res.version.code
+            self.log.new_version_name = version_name = self.session.pre_scan_res.version.name
+            self.log.compatible_code = self.session.pre_scan_res.compatible_code
+            self.session.new_db_version = self.session.pre_scan_res.version
+
+            if not self.session.exist_in_db:
+                self.session.action = const.Action.INSERT
+                utils.log('insert app, new_vc=[%d], new_vn=[%s]' % (version_code, version_name))
+            else:
+                if self.request.force_update == 1 or \
+                    self.session.db_version < self.session.pre_scan_res.version or \
+                    len(set(self.session.pre_scan_res.titles) - \
+                    set(self.session.db_sname_list)) != 0:
+                    self.session.action = const.Action.UPDATE_APK
+                    utils.log('update app(doc), old_vc=[%d], old_vn=[%s], new_vc=[%d], ' \
+                        'new_vn=[%s], old_sname=[%s], new_sname=[%s]' % \
+                        (self.session.db_version.code, self.session.db_version.name, 
+                            version_code, version_name, set(self.session.db_sname_list), 
+                            set(self.session.pre_scan_res.titles)))
+                else:
+                    utils.log('update app(detail), old_vc=[%d], old_vn=[%s], new_vc=[%d], ' \
+                        'new_vn=[%s], old_sname=[%s], new_sname=[%s]' % \
+                        (self.session.db_version.code, self.session.db_version.name, 
+                            version_code, version_name, set(self.session.db_sname_list),
+                            set(self.session.pre_scan_res.titles)))
+        else:
+            # 多版本app, 对比最大版本与doc保存的纪录, 前者大则更新doc, 否则只更新multiapk
+            scan_multi_version_list = map(lambda x: x.version, self.session.multi_version_scan_res)
+            max_scan_multi_version = max(scan_multi_version_list)
+            self.session.new_db_version = max_scan_multi_version
+            self.log.new_version_code = self.session.new_db_version.code
+            self.log.new_version_name = self.session.new_db_version.name
+            self.log.compatible_code = \
+                random.choice(self.session.multi_version_scan_res).compatible_code
+            if not self.session.exist_in_db:
+                self.session.action = const.Action.INSERT
+                utils.log('insert app, new_vc=[%d], new_vn=[%s]' % (self.log.new_version_code, \
+                    self.log.new_version_name))
+            else:
+                for res in self.session.multi_version_scan_res:
+                    for item in res.titles:
+                        titles_set.add(item)
+                if self.request.force_update == 1 or \
+                    cmp(self.session.db_version, max_scan_multi_version) < 0 or \
+                    len(titles_set - set(self.session.db_sname_list)) != 0:
+                    self.session.action = const.Action.UPDATE_APK
+                    utils.log('update app(doc), old_vc=[%d], old_vn=[%s], ' \
+                            'new_vc=[%d], new_vn=[%s], old_sname[%s], new_sname[%s]' \
+                        % (self.session.db_version.code, self.session.db_version.name,
+                        max_scan_multi_version.code, max_scan_multi_version.name,
+                        titles_set, set(self.session.db_sname_list)))
+                else:
+                    scan_multi_vc_list = map(lambda x: x.code, scan_multi_version_list)
+                    db_multi_vc_list = map(lambda x: x.code, self.session.db_multi_version_list)
+                    add_version_list = list(set(scan_multi_vc_list) - set(db_multi_vc_list))
+                    if len(add_version_list) > 0:
+                        self.session.action = const.Action.UPDATE_MULTIAPK
+                        utils.log('update app(multiapk). add_version_list=%s' % (add_version_list))
+        self.log.action = self.session.action
+        utils.log('action: %s' % (self.session.action.name))
+        if const.Action.filter_update_doc(self.session.action) and \
+            self.log.new_version_code > self.log.old_version_code:
+            if self.session.all_download_pid >= 500000:
+                msg = "find package: %s update action :%s" % \
+                        (self.session.package, self.session.action.value)
+                subject = content = msg
+                utils.send_mail(subject, content, self.mail_receivers, self.mail_sender)
+        if self.session.new_db_version.code == 0:
+            raise error.VersionError
+
+    def crawler(self):
+        """ 抓取app信息分为两类:
+            1.详情信息
+            2.针对需要下载apk文件, 非多版本下载单个apk文件, 多版本则下载多个apk文件
+        """
+        utils.log('crawler...')
+        if self.session.action == const.Action.DEFAULT or \
+            self.session.task_type == const.TaskType.DEFAULT:
+            raise error.ImpossibleError
+
+        # 基本详情
+        if self.session.multiapk == const.MultiApkType.NO_MULTIAPK or \
+            self.session.fix_action == const.Action.UPDATE_DETAIL:
+            compatible_detail = self.session.pre_scan_res
+        else:
+            compatible_detail = random.choice(self.session.multi_version_scan_res)
+        self.process_basic_detail(compatible_detail)
+
+        # 分级标准: ESRB, IARC
+        multi_content_rating = self.get_multi_content_rating(self.session.package)
+        self.session.db_set.package.multi_content_rating = multi_content_rating
+        utils.log('[multi content rating]: %s' % (multi_content_rating))
+
+        # 付费app获取其付费信息, 暂时包括: 日本JPY
+        if not self.session.free:
+            self.session.db_set.package.paid_info = self.get_paid_info(self.session.package)
+            utils.log('[paid info]: %s' % (self.session.db_set.package.paid_info))
+
+        # 多语言详情
+        if const.Action.filter_update_doc(self.session.action):
+            utils.log('get multi lang details...')
+            lang_details = self.get_multi_lang_details(self.session.package, self.lang_list)
+            self.process_multi_lang_details(lang_details)
+            self.session.lang_details = lang_details
+
+        # 需要下载apk文件
+        if const.Action.filter_download_apk(self.session.action):
+            if self.session.task_type == const.TaskType.DETAIL:
+                apk_feature = self.get_apk_feature_by_webpage(self.session.package)
+                apk_detail = metadata.Apks.Detail()
+                apk_detail.version_code = compatible_detail.version.code
+                apk_detail.version_name = compatible_detail.version.name
+                apk_detail.src_updatetime = compatible_detail.src_updatetime
+                apk_detail.permission = compatible_detail.permission
+                apk_detail.feature = apk_feature
+                apk_detail.download_cost_time = 0
+                self.session.apks.add(apk_detail)
+            elif self.session.task_type == const.TaskType.DOWNLOAD:
+                utils.log("begin to download")
+                if self.session.multiapk == const.MultiApkType.NO_MULTIAPK:
+                    utils.log("download no multiapk")
+                    self.crawler_ex(self.session.pre_scan_res)
+                else:
+                    utils.log("download multiapk")
+                    for idx, compatible_detail in enumerate(self.session.multi_version_scan_res):
+                        self.crawler_ex(compatible_detail)
+                        if idx < len(self.session.multi_version_scan_res) - 1:
+                            self.new_session()
+            utils.log('[apks]: %s' % (self.session.apks)) 
+
+    def process_basic_detail(self, basic_detail):
+        """ 
+            Args:
+                basic_detail: app详情基本信息. type: CompatibleDetail
+        """
+        utils.log('process basic detail...')
+        app_detail = basic_detail.app_details.appDetail
+        lang_details = basic_detail.app_details.langDetails
+
+        if not app_detail.package == self.session.package:
+            raise error.ImpossibleError('package not equals. from %s to %s' % (
+                self.session.package, app_detail.package))
+        pt = self.session.db_set.package
+        if not const.AppCategory.has_gp_category(app_detail.appType):
+            raise error.UnknownCategory('googleplay category: %s' % (app_detail.appType))
+        pt.type = const.AppCategory.get_mm_category(app_detail.appType)
+        pt.app_cate = self._get_gp_category_by_name(random.choice(app_detail.appCategory))
+        pt.cate_id = self._get_mm_category_by_gp_name(random.choice(app_detail.appCategory))
+        if not pt.state == 1:
+            if self.session.fix_action == const.Action.DEFAULT:
+                pt.state = const.TaskType.type_2_state(self.session.task_type)
+            else:
+                pt.state = self.session.src_state
+        download_num = int(filter(str.isdigit, str(app_detail.numDownloads)))
+        pt.all_download_pid = download_num if download_num > self.session.all_download_pid \
+                else self.session.all_download_pid
+        pt.score = int(20 * app_detail.aggregateRating.starRating)
+        pt.score_count = app_detail.aggregateRating.ratingsCount
+        pt.score_detail = '%d;%d;%d;%d;%d' % (app_detail.aggregateRating.oneStarRatings, 
+            app_detail.aggregateRating.twoStarRatings, app_detail.aggregateRating.threeStarRatings,
+            app_detail.aggregateRating.fourStarRatings, app_detail.aggregateRating.fiveStarRatings)
+        pt.comment_count = app_detail.aggregateRating.commentCount
+        pt.video_url = ';'.join(
+            map(lambda x: x.imageUrl, random.choice(lang_details).appDescription.videos))
+        pt.content_rating = app_detail.contentRating
+        pt.creator = app_detail.creator
+        pt.develop_email = app_detail.developerEmail
+        pt.develop_website = app_detail.developerWebsite
+        pt.source_online = 1
+        pt.free = int((max(map(lambda x: x.micros, app_detail.offer)) == 0))
+        pt.uptime = basic_detail.src_updatetime
+        pt.full_type = 2 if 'com.android.vending.CHECK_LICENSE' in app_detail.permission else 0
+        pt.multiapk = self.session.multiapk
+
+    def get_multi_content_rating(self, package):
+        """ 获取内容分级信息
+        """ 
+        utils.log('get multi content rating ...')
+        # 分级标准: ESRB, IARC
+        result = {}
+        content_rating_url = self.server_url_dict.get('content_rating')
+        for country in ['hk', 'us']:
+            param = {'package': package, 'country': country}
+            url = '%s?%s' % (content_rating_url, urllib.urlencode(param))
+            utils.log('url: %s' % (url))
+            try:
+                res = utils.requests_ex(url, timeout=100)
+            except Exception as err:
+                raise error.GetMultiContentRatingError(url=url, msg=err, extra='request exception')
+            if not res.status_code == const.HttpStatusCode.OK:
+                raise error.GetMultiContentRatingError(url=url, msg=res.content, 
+                    extra='status code=%d' % (res.status_code))
+            if country == 'hk':
+                result['ESRB'] = res.content
+            elif country == 'us':
+                result['IARC'] = res.content
+        return utils.json_decode(result)
+
+    def get_paid_info(self, package):
+        """ 获取付费信息
+        """
+        utils.log('get paid info...')
+        result = []
+        paid_info_url = self.server_url_dict.get('paid_info')
+        for country in ['id']:
+            param = {'package': package, 'country': country}
+            url = '%s?%s' % (paid_info_url, urllib.urlencode(param))
+            utils.log('url: %s' % (url))
+            try:
+                res = utils.requests_ex(url, timeout=20)
+            except Exception as err:
+                raise error.GetPaidInfoError(url=url, msg=err, extra='request exception')
+            if not res.status_code == const.HttpStatusCode.OK:
+                raise error.GetPaidInfoError(url=url, msg=res.content, 
+                    extra='status code=%d' % (res.status_code))
+            try:
+                res = utils.json_encode(res.content)
+                # TODO: server. offer price, mircos to normal
+                paid_info = []
+                for currency_code, formatted_amount in res:
+                    paid_info.append((currency_code, 1.0 * formatted_amount / 1000000))
+            except Exception as err:
+                raise error.GetPaidInfoError(url=url, msg=err, extra='deserialize error')
+            result.extend(paid_info)
+        return result
+
+    def get_multi_lang_details(self, package, lang_list):
+        """ 获取app多语言详情
+        """
+        lang_details  = metadata.LangDetails()
+
+        url = self.server_url_dict.get('detail')
+        detail_req = _app_message.DetailRequest()
+        detail_req.package = package
+        detail_req.lang.extend(lang_list)
+        utils.log('url: %s, detail_req: %s' % (url, utils.message_2_dict(detail_req)))
+        try:
+            res = utils.requests_ex(url, data=detail_req.SerializeToString(), timeout=20)
+        except Exception as err:
+            raise error.GetDetailError(url=url, msg=err, extra='request exception')
+        if not res.status_code == const.HttpStatusCode.OK:
+            raise error.GetDetailError(url=url, msg=res.content, 
+                extra='status code=%d' % (res.status_code))
+        try:
+            detail_res = _app_message.DetailResponse()
+            detail_res.MergeFromString(res.content)
+        except Exception as err:
+            raise error.GetDetailError(url=url, msg=err, extra='deserialize error')
+        for detail in detail_res.detail.langDetails:
+            lang_detail = metadata.LangDetails.Detail()
+            lang_detail.lang = detail.lang
+            title = detail.appDescription.title
+            try:
+                lang_detail.sname = re.sub(u"[^\u0000-\uD7FF\uE000-\uFFFF]", "", title, re.UNICODE)
+            except Exception as err:
+                lang_detail.sname = title
+            lang_detail.sname = lang_detail.sname.strip()
+            lang_detail.brief = detail.appDescription.descriptionHtml.replace('<a href="</a>', '')
+            lang_detail.whatsnew = detail.appDescription.recentChangesHtml
+            lang_detail.src_icon = detail.appDescription.icon.imageUrl
+            lang_detail.src_screenshots = \
+                map(lambda x: x.imageUrl, detail.appDescription.screenshots)[:5]
+            lang_detail.src_banners = \
+                    map(lambda x: x.imageUrl, detail.appDescription.banners)
+            lang_detail.videos = map(lambda x: x.imageUrl, detail.appDescription.videos)
+            lang_details.add(lang_detail)
+        return lang_details
+
+    def process_multi_lang_details(self, lang_details):
+        """ 处理多语言详情
+            1. 处理图片
+        """
+        utils.log('process images...')
+        def _resize_images(images):
+            mm_resize_req = _image_message.MmResizeRequest()
+            mm_resize_req.product = self.auth_dict.get('image_server_name')
+            mm_resize_req.token = self.auth_dict.get('image_server_token')
+            if self.session.task_type == const.TaskType.DETAIL:
+                mm_resize_req.dimensionMode = _image_message.SIMPLE
+            else:
+                mm_resize_req.dimensionMode = _image_message.ALL
+            mm_resize_req.resizeImages.extend(images)
+            url = self.server_url_dict.get('image_resize')
+            try:
+                utils.log('url: %s, resize_req: %s' % (url, utils.message_2_dict(mm_resize_req)))
+                res = utils.requests_ex(url, data=mm_resize_req.SerializeToString(), timeout=600)
+            except Exception as err:
+                raise error.ProcessImageError(url=url, msg=err, extra='request exception')
+            if not res.status_code == const.HttpStatusCode.OK:
+                raise error.ProcessImageError(url=url, msg=res.content, 
+                    extra='status code=%d' % (res.status_code))
+            mm_resize_res = _image_message.MmResizeResponse()
+            try:
+                mm_resize_res.MergeFromString(res.content)
+            except Exception as err:
+                raise error.ProcessImageError(url=url, msg=err, extra='deserialize error')
+            mm_resize_res = dict(map(lambda x: (x.url, x), mm_resize_res.resizeImages))
+            return mm_resize_res
+
+        images = []
+        for url in lang_details.icons:
+            resize_img = _image_message.MmResizeImage()
+            resize_img.imageMode = _image_message.ICON
+            resize_img.url = url
+            images.append(resize_img)
+
+        for url in lang_details.screenshots:
+            resize_img = _image_message.MmResizeImage()
+            resize_img.imageMode = _image_message.SCREENSHOT
+            resize_img.url = url
+            images.append(resize_img)
+
+        for url in lang_details.banners:
+            resize_img = _image_message.MmResizeImage()
+            resize_img.imageMode = _image_message.BANNER
+            resize_img.url = url
+            images.append(resize_img)
+
+
+        resize_res = {}
+        offset = 0
+        for idx in range(len(images)):
+            if idx % 5 == 1:
+                resize_res.update(_resize_images(images[offset: idx]))
+                offset = idx
+        if offset < len(images):
+            resize_res.update(_resize_images(images[offset:]))
+
+        for detail in lang_details.details:
+            icon_img = resize_res.get(detail.src_icon)
+            detail.icon65 = icon_img.icon65
+            detail.icon = icon_img.icon
+            detail.iconlow = icon_img.iconlow
+            detail.iconhigh = icon_img.iconhigh
+            detail.icon256 = icon_img.icon256
+            detail.iconhdpi = icon_img.iconhdpi
+
+            for screenshot in detail.src_screenshots:
+                screenshot_img = resize_res.get(screenshot)
+                detail.screenshotlow += '%s;' % (screenshot_img.screenshotlow)
+                detail.screenshot += '%s;' % (screenshot_img.screenshot)
+                detail.screenshothigh += '%s;' % (screenshot_img.screenshothigh)
+                detail.iconalading += '%s;' % (screenshot_img.iconalading)
+
+            for banner in detail.src_banners:
+                banner_img = resize_res.get(banner)
+                print banner
+                print banner_img, "xxxxxxxxxxxxxxxxxxx"
+                detail.banner += '%s;' % (banner_img.banner)
+
+    def get_apk_feature_by_webpage(self, package):
+        """ 对于非下载apk, 通过gp网页里的相关内容来适配min_sdk, max_sdk
+        """
+        feature = metadata.ApkFeature()
+        gp_detail_url = '%s?id=%s' % (self.server_url_dict.get('googleplay_detail'), package)
+        cmd = 'curl "%s"' % (gp_detail_url)
+        status, output = commands.getstatusoutput(cmd)
+        if status == 0:
+            sdk_obj =re.search(
+                r'(?<=\boperatingSystems)[\"|>]*[a-zA-z]*([1-9]d*\.?[0-9]*\.?[0-9]*)-?'\
+                '([1-9]d*\.?[0-9]*\.?[0-9]*)?', output.replace(' ', ''))
+            if sdk_obj is not None:
+                feature.min_sdk = const.AndroidVer2Sdk.get(sdk_obj.group(1)) or feature.min_sdk
+                feature.max_sdk = const.AndroidVer2Sdk.get(sdk_obj.group(2)) or feature.max_sdk
+        return feature
+
+    def crawler_ex(self, compatible_detail):
+        """ 抓取apk文件, 解析获取兼容信息, 上传apk文件, 安全扫描
+        """
+        utils.log('[crawler apk]: %s' % (compatible_detail))
+        self.log.new_version_code = compatible_detail.version.code
+        self.log.new_version_name = compatible_detail.version.name
+        self.log.compatible_code = compatible_detail.compatible_code
+        self.log.account = compatible_detail.account.email
+        self.log.android_id = compatible_detail.account.androidId
+        self.log.password = compatible_detail.account.password
+        self.log.proxies = compatible_detail.proxies
+
+        download_begin_time = utils.cur_time_secs()
+        apk_file = self.download_apk(compatible_detail.download_info)
+        self.log.download_cost_time = int(utils.cur_time_secs() - download_begin_time)
+
+        app_feature = self.parse_apk(apk_file)
+        upload_apk, apk_md5 = self.upload_apk(apk_file)
+        self.anti_scan(apk_url=upload_apk, md5=apk_md5)
+
+        detail = metadata.Apks.Detail()
+        detail.version_code = compatible_detail.version.code 
+        detail.version_name = compatible_detail.version.name
+        detail.download_inner = upload_apk
+        detail.apk_md5 = apk_md5
+        detail.apk_size = compatible_detail.size
+        detail.permission = compatible_detail.permission
+        detail.src_updatetime = compatible_detail.src_updatetime
+        detail.feature = app_feature
+        detail.download_cost_time = self.log.download_cost_time
+        self.session.apks.add(detail)
+
+    def download_apk(self, download_info):
+        """
+            Raises:
+                DownloadApkError
+        """
+        utils.log("download url:%s" % download_info.downloadUrl)
+        url = download_info.downloadUrl
+        cookie = download_info.cookie
+        cookie = {cookie.name: str(cookie.value)}
+        headers = {'User-Agent': 'AndroidDownloadManager'}
+        try:
+            res = utils.requests_ex(url=url, headers=headers, cookies=cookie, timeout=100)
+        except Exception as err:
+            raise error.DownloadApkError(url=url, msg=err, extra='request exception')
+        if not res.status_code == const.HttpStatusCode.OK:
+            raise error.DownloadApkError(url=url, msg=res.content, 
+                extra='status_code=%d' % (status_code))
+        apk_file = os.path.join(self.tmp_dir, '%s_%d.apk' % (self.session.package, utils.randint()))
+        with open(apk_file, 'w') as fd:
+            fd.write(res.content)
+        return apk_file
+
+
+if __name__ == '__main__':
+
+    r = metadata.Request()
+    r.package = 'com.keramidas.TitaniumBackupPro'
+ #   r.package = 'com.booking'
+    r.task_type = 1
+ #   r.package = 'com.bbm'
+    r.force_update = 1
+
+    c = GoogleplayCrawler()
+    c.init()
+    c.set_request(r)
+    c.do()
+    #details =  c.get_multi_lang_details('com.bbm', c.lang_list)
+    #c.process_multi_lang_details(details)
+ #   print c.parse_apk('/home/work/lirui_test_crawler/crawler/thirdparty/googleplayapi2/test.apk').dump()
+  #  c.load_data_from_db()
+ #   print c.get_apk_signmd5('test/META-INF/CERT.RSA')
+

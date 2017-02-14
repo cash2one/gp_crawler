@@ -1,0 +1,16 @@
+enum ScreenSize {
+    SMALL = 0;
+    NORMAL = 1;
+    LARGE = 2;
+    XLARGE = 3;
+}
+
+enum ScreenDensity {
+    LDPI = 0;
+    MDPI = 1;
+    HDPI = 2;
+    XHDPI = 3;
+    XXHDPI = 4;
+    XXXHDPI = 5;
+}
+

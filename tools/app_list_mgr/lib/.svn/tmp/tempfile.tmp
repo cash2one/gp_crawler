@@ -1,0 +1,88 @@
+#!/usr/bin/env python
+#-*- coding: utf-8 -*-
+########################################################################
+# 
+# Copyright (c) 2015 Baidu.com, Inc. All Rights Reserved
+# 
+########################################################################
+ 
+"""
+File: lib/const.py
+Author: work(work@baidu.com)
+Date: 2015/07/24 13:09:37
+"""
+import os
+
+ROOT_PATH = os.path.dirname(os.path.abspath(__file__))
+
+COUNTRIES = (
+    ('id', 'indonesia'),
+    ('us', 'united-states'),
+    ('th', 'thailand'),
+    ('vn', 'vietnam'),
+    ('in', 'india'),
+    ('eg', 'egypt'),
+    ('pk', 'pakistan'),
+    ('ru', 'russia'),
+    ('ph', 'philippines'),
+    ('my', 'malaysia'),
+    ('sa', 'saudi-arabia'),
+    ('br', 'brazil')
+)
+
+CATES = [
+    ('overall', ''),
+    ('application', 'books-and-reference'),
+    ('application', 'business'),
+    ('application', 'comics'),
+    ('application', 'communication'),
+    ('application', 'education'),
+    ('application', 'entertainment'),
+    ('application', 'finace'),
+    ('application', 'health-and-fitness'),
+    ('application', 'libraries-and-demo'),
+    ('application', 'lifestyle'),
+    ('application', 'app-wallpaper'),
+    ('application', 'media-and-video'),
+    ('application', 'medical'),
+    ('application', 'music-and-audio'),
+    ('application', 'news-magazines'),
+    ('application', 'personalization'),
+    ('application', 'photography'),
+    ('application', 'productivity'),
+    ('application', 'shopping'),
+    ('application', 'social'),
+    ('application', 'sports'),
+    ('application', 'tools'),
+    ('application', 'transportation'),
+    ('application', 'travel-and-local'),
+    ('application', 'weather'),
+    ('application', 'app-widgets'),
+    ('game', ''),
+    ('game', 'game-action'),
+    ('game', 'game-adventure'),
+    ('game', 'game-arcade'),
+    ('game', 'game-board'),
+    ('game', 'game-card'),
+    ('game', 'game-casino'),
+    ('game', 'game-casual'),
+    ('game', 'game-educational'),
+    ('game', 'game-music'),
+    ('game', 'game-puzzle'),
+    ('game', 'game-racing'),
+    ('game', 'game-role-playing'),
+    ('game', 'game-simulation'),
+    ('game', 'sports-games'),
+    ('game', 'game-strategy'),
+    ('game', 'game-trivia'),
+    ('game', 'game-word'),
+]
+
+FEEDS = (
+    (1, 'free'),
+    (2, 'paid'),
+    (3, 'grossing'),
+    (4, 'new_free'),
+    (5, 'new_paid')
+)
+

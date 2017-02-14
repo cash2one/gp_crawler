@@ -1,0 +1,108 @@
+package image;
+enum ImageMode {
+    URL = 0;
+    BINARY = 1;
+}
+
+enum CompressMode {
+    PNGQUANT = 0;
+    WEBP = 1;
+}
+
+enum MmImageMode {
+    ICON = 0;
+    SCREENSHOT = 1;
+}
+
+enum DimensionMode {
+    ALL = 0;
+    SIMPLE = 1;
+}
+
+message Image {
+    optional string directory = 1;
+    optional string name = 2;
+    optional string md5 = 3;
+    optional string url = 5;
+}
+
+message PngquantDetail {
+    optional string quality = 1;
+    optional Image image = 10;
+}
+
+message WebpDetail {
+    optional string quality = 1;
+    optional Image image = 10;
+}
+
+message CompressDetail {
+    optional CompressMode compressMode = 1;
+    optional PngquantDetail pngquantDetail = 2;
+    optional WebpDetail webpDetail = 3;
+}
+
+message CompressRequest {
+    optional string product = 1;
+    optional string token = 2;
+    optional ImageMode imageMode = 3;
+    optional string url = 4;
+    optional bytes binary = 5;
+    repeated CompressDetail compressDetails = 6;
+}
+
+message CompressResponse {
+    repeated CompressDetail compressDetails = 1;
+}
+
+message ResizeImage {
+    optional ImageMode imageMode = 1;
+    optional string url = 2;
+    repeated ResizeDetail resizeDetails = 3;
+}
+
+message ResizeDetail {
+    optional int32 width = 1;
+    optional int32 height = 2;
+    optional Image image = 3;
+    repeated CompressDetail compressDetails = 4;
+}
+
+message ResizeRequest {
+    optional string product = 1;
+    optional string token = 2;
+    repeated ResizeImage resizeImages = 4;
+}
+
+message ResizeResponse {
+    repeated ResizeImage resizeImages = 1;
+}
+
+message MmResizeImage {
+    optional MmImageMode imageMode = 1;         // icon or screenshot
+    optional string url = 2;                    // 图片原始url地址
+    optional string icon65 = 10;                // 以下为转化为多种尺寸的直接结果
+    optional string iconlow = 11;
+    optional string icon = 12;
+    optional string icon170 = 13;
+    optional string iconhigh = 14;
+    optional string iconhdpi = 15;
+    optional string icon256 = 16;
+
+    optional string screenshotlow = 20;
+    optional string screenshot = 21;
+    optional string screenshothigh = 22;
+    optional string iconalading = 23;
+}
+
+message MmResizeRequest {
+    optional string product = 1;
+    optional string token = 2;
+    optional DimensionMode dimensionMode = 3;   // 不同压缩维度对应不同压缩尺寸
+    repeated MmResizeImage resizeImages = 4;
+}
+
+message MmResizeResponse {
+    repeated MmResizeImage resizeImages = 1;
+}
+

@@ -1,0 +1,23 @@
+K 25
+svn:wc:ra_dav:version-url
+V 131
+/app/gensoft/security-client/!svn/ver/205266/trunk/server/phoneapp_tags/deploy/mini_proj/mini_proj_deploy/proj/appannie_crawler/lib
+END
+__init__.py
+K 25
+svn:wc:ra_dav:version-url
+V 143
+/app/gensoft/security-client/!svn/ver/194494/trunk/server/phoneapp_tags/deploy/mini_proj/mini_proj_deploy/proj/appannie_crawler/lib/__init__.py
+END
+utils.py
+K 25
+svn:wc:ra_dav:version-url
+V 140
+/app/gensoft/security-client/!svn/ver/194494/trunk/server/phoneapp_tags/deploy/mini_proj/mini_proj_deploy/proj/appannie_crawler/lib/utils.py
+END
+const.py
+K 25
+svn:wc:ra_dav:version-url
+V 140
+/app/gensoft/security-client/!svn/ver/205266/trunk/server/phoneapp_tags/deploy/mini_proj/mini_proj_deploy/proj/appannie_crawler/lib/const.py
+END

@@ -1,0 +1,23 @@
+K 25
+svn:wc:ra_dav:version-url
+V 121
+/app/gensoft/security-client/!svn/ver/217697/trunk/server/phoneapp_tags/deploy/trunk/app_crawler/plt/crawler2/script/ctrl
+END
+check.sh
+K 25
+svn:wc:ra_dav:version-url
+V 130
+/app/gensoft/security-client/!svn/ver/217697/trunk/server/phoneapp_tags/deploy/trunk/app_crawler/plt/crawler2/script/ctrl/check.sh
+END
+start.sh
+K 25
+svn:wc:ra_dav:version-url
+V 130
+/app/gensoft/security-client/!svn/ver/217697/trunk/server/phoneapp_tags/deploy/trunk/app_crawler/plt/crawler2/script/ctrl/start.sh
+END
+stop.sh
+K 25
+svn:wc:ra_dav:version-url
+V 129
+/app/gensoft/security-client/!svn/ver/217697/trunk/server/phoneapp_tags/deploy/trunk/app_crawler/plt/crawler2/script/ctrl/stop.sh
+END

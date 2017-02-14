@@ -1,0 +1,29 @@
+K 25
+svn:wc:ra_dav:version-url
+V 116
+/app/gensoft/security-client/!svn/ver/217699/trunk/server/phoneapp_tags/deploy/trunk/app_crawler/plt/crawler2/script
+END
+timeout_main.py
+K 25
+svn:wc:ra_dav:version-url
+V 132
+/app/gensoft/security-client/!svn/ver/217045/trunk/server/phoneapp_tags/deploy/trunk/app_crawler/plt/crawler2/script/timeout_main.py
+END
+__init__.py
+K 25
+svn:wc:ra_dav:version-url
+V 128
+/app/gensoft/security-client/!svn/ver/206948/trunk/server/phoneapp_tags/deploy/trunk/app_crawler/plt/crawler2/script/__init__.py
+END
+build.sh
+K 25
+svn:wc:ra_dav:version-url
+V 125
+/app/gensoft/security-client/!svn/ver/205551/trunk/server/phoneapp_tags/deploy/trunk/app_crawler/plt/crawler2/script/build.sh
+END
+main.py
+K 25
+svn:wc:ra_dav:version-url
+V 124
+/app/gensoft/security-client/!svn/ver/209413/trunk/server/phoneapp_tags/deploy/trunk/app_crawler/plt/crawler2/script/main.py
+END

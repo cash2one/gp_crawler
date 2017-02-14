@@ -1,0 +1,69 @@
+package storage;
+
+enum TransferMode {
+    SCP = 0;
+    MTTP = 1;
+}
+
+enum MttpCompressMode {
+    GZIP = 0;
+    NORMAL = 1;
+    LZO = 2;
+}
+
+message ScpDetail {
+    optional string host = 1;
+    optional string user = 2;
+    optional string password = 3;
+}
+
+message MttpDetail {
+    optional string host = 1;                      // 源站机器ip或者hostname    
+    optional int32 port = 2;                       // 源站mttp port
+    optional int32 threadNum = 3;                  // 并行线程数
+    optional MttpCompressMode compressMode = 4;    // mttp压缩模式
+    optional int32 compressThreadNum = 5;          // 压缩线程数
+    optional int32 connectTimeout = 6;             // 连接超时时间
+    optional int32 receiveTimeout = 7;             // 数据接收超时
+    optional int32 sendTimeout = 8;                // 数据发送超时
+    optional bool replace = 9;                     // 重名文件时是否覆盖
+}
+
+message File {
+    optional string directory = 1;  
+    optional string name = 2;
+    optional string md5 = 3;
+}
+
+message TransferFile {
+    optional File srcFile = 1;
+    optional File destFile = 2;
+}
+
+message UploadRequest {
+    optional string product = 1;           // 产品线名称 
+    optional string token = 2;             // 产品线标识
+    optional TransferMode mode = 3;        // 上传方式
+    optional ScpDetail scpDetail = 4;      // 采用scp上传用户名、密钥等信息
+    optional MttpDetail mttpDetail = 5;    // 采用mttp上传端口等信息
+    optional bool compressMultiFiles = 6;  // 多个文件时是否压缩后一次上传再解压, 还是多个文件逐步上传
+    optional TransferFile compressFile = 7;// 如果以压缩方式上传, 对应的压缩文件
+    repeated TransferFile files = 8;       // 待保存到存储平台的文件
+}
+
+message UploadResponse {
+    repeated File files = 1;
+}
+
+message DownloadRequest {
+    optional string product = 1;
+    optional string token = 2;
+    optional TransferMode mode = 3;
+    optional ScpDetail scpDetail = 4;
+    optional MttpDetail mttpDetail = 5;
+    repeated TransferFile files = 6;
+}
+
+message DownloadResponse {
+    repeated File files = 2;
+}

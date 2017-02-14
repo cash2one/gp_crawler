@@ -1,0 +1,41 @@
+K 25
+svn:wc:ra_dav:version-url
+V 115
+/app/gensoft/security-client/!svn/ver/205270/trunk/server/phoneapp_tags/deploy/trunk/app_crawler/plt/crawler2/proto
+END
+app.proto
+K 25
+svn:wc:ra_dav:version-url
+V 125
+/app/gensoft/security-client/!svn/ver/205270/trunk/server/phoneapp_tags/deploy/trunk/app_crawler/plt/crawler2/proto/app.proto
+END
+image.proto
+K 25
+svn:wc:ra_dav:version-url
+V 127
+/app/gensoft/security-client/!svn/ver/205270/trunk/server/phoneapp_tags/deploy/trunk/app_crawler/plt/crawler2/proto/image.proto
+END
+__init__.py
+K 25
+svn:wc:ra_dav:version-url
+V 127
+/app/gensoft/security-client/!svn/ver/205270/trunk/server/phoneapp_tags/deploy/trunk/app_crawler/plt/crawler2/proto/__init__.py
+END
+scan.proto
+K 25
+svn:wc:ra_dav:version-url
+V 126
+/app/gensoft/security-client/!svn/ver/205270/trunk/server/phoneapp_tags/deploy/trunk/app_crawler/plt/crawler2/proto/scan.proto
+END
+storage.proto
+K 25
+svn:wc:ra_dav:version-url
+V 129
+/app/gensoft/security-client/!svn/ver/205270/trunk/server/phoneapp_tags/deploy/trunk/app_crawler/plt/crawler2/proto/storage.proto
+END
+const.proto
+K 25
+svn:wc:ra_dav:version-url
+V 127
+/app/gensoft/security-client/!svn/ver/205270/trunk/server/phoneapp_tags/deploy/trunk/app_crawler/plt/crawler2/proto/const.proto
+END

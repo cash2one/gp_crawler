@@ -1,0 +1,47 @@
+K 25
+svn:wc:ra_dav:version-url
+V 113
+/app/gensoft/security-client/!svn/ver/218903/trunk/server/phoneapp_tags/deploy/trunk/app_crawler/plt/crawler2/src
+END
+__init__.py
+K 25
+svn:wc:ra_dav:version-url
+V 125
+/app/gensoft/security-client/!svn/ver/205270/trunk/server/phoneapp_tags/deploy/trunk/app_crawler/plt/crawler2/src/__init__.py
+END
+crawler.py
+K 25
+svn:wc:ra_dav:version-url
+V 124
+/app/gensoft/security-client/!svn/ver/218903/trunk/server/phoneapp_tags/deploy/trunk/app_crawler/plt/crawler2/src/crawler.py
+END
+metadata.py
+K 25
+svn:wc:ra_dav:version-url
+V 125
+/app/gensoft/security-client/!svn/ver/218903/trunk/server/phoneapp_tags/deploy/trunk/app_crawler/plt/crawler2/src/metadata.py
+END
+googleplay_crawler.py
+K 25
+svn:wc:ra_dav:version-url
+V 135
+/app/gensoft/security-client/!svn/ver/218903/trunk/server/phoneapp_tags/deploy/trunk/app_crawler/plt/crawler2/src/googleplay_crawler.py
+END
+log.py
+K 25
+svn:wc:ra_dav:version-url
+V 120
+/app/gensoft/security-client/!svn/ver/217139/trunk/server/phoneapp_tags/deploy/trunk/app_crawler/plt/crawler2/src/log.py
+END
+db.py
+K 25
+svn:wc:ra_dav:version-url
+V 119
+/app/gensoft/security-client/!svn/ver/214580/trunk/server/phoneapp_tags/deploy/trunk/app_crawler/plt/crawler2/src/db.py
+END
+manifest.py
+K 25
+svn:wc:ra_dav:version-url
+V 125
+/app/gensoft/security-client/!svn/ver/205270/trunk/server/phoneapp_tags/deploy/trunk/app_crawler/plt/crawler2/src/manifest.py
+END

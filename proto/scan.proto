@@ -1,0 +1,39 @@
+import "app.proto";
+package scan;
+
+option py_generic_services = true;
+
+service ScanService {
+    rpc AdaptCompatibleAccount(AdaptRequest) returns (AdaptResponse);
+    rpc GetMultiVersionAccount(MultiVersionRequest) returns (MultiVersionResponse);
+}
+
+message CompatibleDetail {
+    optional app.Account account = 1;
+    optional string proxies = 2;
+    optional app.DetailResponse scanAppDetail = 3;
+}
+
+enum AdaptType {
+    DOWNLOAD = 1;
+    DETAIL = 2;
+}
+
+message AdaptRequest {
+    optional string package = 1;
+    optional AdaptType type = 2;
+}
+
+message AdaptResponse {
+    optional CompatibleDetail detail = 1;
+}
+
+message MultiVersionRequest {
+    optional string package = 1;
+}
+
+message MultiVersionResponse {
+    repeated CompatibleDetail details = 1;
+}
+
+

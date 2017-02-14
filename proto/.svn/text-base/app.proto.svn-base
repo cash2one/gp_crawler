@@ -1,0 +1,212 @@
+import "const.proto";
+
+package app;
+
+option py_generic_services = true;
+
+service GoogleplayService {
+    rpc Detail(DetailRequest) returns (DetailResponse);
+}
+
+message Account {
+    optional string email = 1;
+    optional string password = 2;
+    optional string androidId = 3;
+    optional string deviceCountry = 4;
+    optional string operatorCountry = 5;
+    optional int32 sdk = 6;
+    optional string device = 7;
+    optional string hardware = 8;
+    optional string product = 9;
+}
+
+message DetailRequest {
+    optional string package = 1;
+    repeated string lang = 2;
+    optional Account account = 3;
+    optional string proxies = 4;
+    optional bool download = 5;
+}
+
+message DetailResponse {
+    optional Detail detail = 1;
+    optional DownloadInfo downloadInfo = 2;
+}
+
+message Detail {
+    optional AppDetail appDetail = 1;
+    repeated LangDetail langDetails = 2;
+}
+
+message AppDetail {
+    optional string package = 1;
+    optional int32 installationSize = 2;
+    repeated string appCategory = 3;
+    optional int32 majorVersionNumber = 4;
+    optional int32 versionCode = 5;
+    optional string versionName = 6;
+    repeated Offer offer = 7;
+    optional AggregateRating aggregateRating = 8;
+    optional string numDownloads = 9;
+    optional string uploadDate = 10;
+    optional int32 contentRating = 11;
+    optional string appType = 12;
+
+    optional string creator = 15;
+    optional string developerName = 16;
+    optional string developerEmail = 17;
+    optional string developerWebsite = 18;
+    optional string shareUrl = 19;
+
+    optional bool variesByAccount =  21;
+    repeated string permission = 22;
+    optional Availability availability = 23;
+}
+
+message Offer {
+    optional string currencyCode = 1;
+    optional string formattedAmount = 2;
+    optional int32 offerType = 3;
+    optional int64 micros = 4;
+}
+
+message AggregateRating {
+  optional int32 type = 1;
+  optional float starRating = 2;
+  optional uint64 ratingsCount = 3;
+  optional uint64 oneStarRatings = 4;
+  optional uint64 twoStarRatings = 5;
+  optional uint64 threeStarRatings = 6;
+  optional uint64 fourStarRatings = 7;
+  optional uint64 fiveStarRatings = 8;
+  optional uint64 thumbsUpCount = 9;
+  optional uint64 thumbsDownCount = 10;
+  optional uint64 commentCount = 11;
+  optional double bayesianMeanRating = 12;
+}
+
+message AppPermission {
+  optional string key = 1;
+  optional bool permissionRequired = 2;
+}
+
+message Availability {
+  optional int32 restriction = 1;
+  repeated AvailabilityProblem availabilityProblem = 2;
+}
+
+message AvailabilityProblem {
+  optional int32 problemType = 1;
+  repeated string missingValue = 2;
+}
+
+message Image {
+    message Dimension {
+        optional int32 width = 1;
+        optional int32 height = 2;
+        optional int32 aspectRatio = 10;
+    }
+    optional string imageUrl = 1;
+    optional Dimension dimension = 2;
+}
+
+message LangDetail {
+    optional string lang = 1;
+    optional AppDescription appDescription = 2;
+}
+
+message AppDescription {
+    optional string title = 1;
+    optional string descriptionHtml = 2;
+    optional string recentChangesHtml = 3;
+    optional Image icon = 4;
+    repeated Image screenshots = 5;
+    repeated Image videos = 6;
+}
+
+message DownloadInfo {
+    optional HttpCookie cookie = 1;
+    optional string downloadUrl = 2;
+}
+
+message HttpCookie {
+  optional string name = 1;
+  optional string value = 2;
+}
+
+message DownloadRequest {
+    optional string package = 1;
+    optional int32 versionCode = 2;
+    optional int32 offerType = 3;
+    optional Account account = 4;
+    optional string proxies = 5;
+}
+
+message DownloadResponse {
+    optional string innerUrl = 1;
+    optional string md5 = 2;
+    optional Manifest manifest = 3;
+}
+
+message Manifest {
+    optional string package = 1;
+    optional int32 versionCode = 2;
+    optional string versionName = 3;
+    optional int32 minSdk = 4;
+    optional int32 maxSdk = 5;
+    optional int32 glEsVersion = 6;
+    optional string signMd5 = 7;
+    repeated string cpu = 18;
+
+    optional SupportScreens supportScreens = 10;
+    repeated CompatibleScreens compatibleScreens = 11;
+    optional UsesConfiguration usesConfiguration = 12;
+
+    repeated string usesFeature = 16;
+    repeated string usesLibrary = 17;
+
+}
+
+message SupportScreens {
+    optional bool smallScreens = 1;
+    optional bool normalScreens = 2;
+    optional bool largeScreens = 3;
+    optional bool xlargeScreens = 4;
+    optional bool anyDensity = 5;
+}
+
+message CompatibleScreens {
+    optional ScreenSize screenSize = 1;
+    optional ScreenDensity screenDensity = 2;
+}
+
+message UsesConfiguration {
+    optional bool reqFiveWayNavigation = 1;
+    optional bool reqHardKeyboard = 2;
+    optional string keyboradType = 3;
+    optional string navigation = 4;
+    optional string touchScreen = 5;
+}
+
+message SearchRequest {
+    optional string query = 1;
+    optional Account account = 2;
+    optional string proxies = 3 ;
+    optional int32 limit = 4;
+}
+
+message SearchResponse {
+    repeated string package = 1;
+}
+
+message ListRequest {
+    optional string category = 1;
+    optional string subCategory = 2;
+    optional Account account = 3;
+    optional string proxies = 4;
+    optional int32 limit = 5;
+}
+
+message ListResponse {
+    repeated string data = 1;
+}
